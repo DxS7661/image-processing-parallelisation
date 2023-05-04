@@ -1,0 +1,77 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <mpi.h>
+
+#define IMG_WIDTH 4000
+#define IMG_HEIGHT 4000
+#define KERNEL_WIDTH 25
+#define KERNEL_HEIGHT 25
+
+float kernel[KERNEL_WIDTH][KERNEL_HEIGHT] = {
+    // 25x25 Gaussian blur kernel
+};
+
+int main(int argc, char** argv) {
+    int rank, size;
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    // Load image data into memory
+    float* img_data = NULL;
+    if (rank == 0) {
+        img_data = malloc(IMG_WIDTH * IMG_HEIGHT * sizeof(float));
+        // Load image data from file or generate it
+    }
+
+    // Scatter image data to all processes
+    MPI_Bcast(img_data, IMG_WIDTH * IMG_HEIGHT, MPI_FLOAT, 0, MPI_COMM_WORLD);
+
+    // Compute horizontal convolution
+    int start_col = rank * (IMG_WIDTH / size);
+    int end_col = (rank + 1) * (IMG_WIDTH / size);
+    float* conv_data = malloc((end_col - start_col) * IMG_HEIGHT * sizeof(float));
+    for (int y = 0; y < IMG_HEIGHT; y++) {
+        for (int x = start_col; x < end_col; x++) {
+            float sum = 0.0;
+            for (int ky = 0; ky < KERNEL_HEIGHT; ky++) {
+                int sy = y + ky - KERNEL_HEIGHT / 2;
+                if (sy < 0 || sy >= IMG_HEIGHT) {
+                    continue;
+                }
+                for (int kx = 0; kx < KERNEL_WIDTH; kx++) {
+                    int sx = x + kx - KERNEL_WIDTH / 2;
+                    if (sx < 0 || sx >= IMG_WIDTH) {
+                        continue;
+                    }
+                    sum += img_data[sy * IMG_WIDTH + sx] * kernel[ky][kx];
+                }
+            }
+            conv_data[(x - start_col) * IMG_HEIGHT + y] = sum;
+        }
+    }
+
+    // Gather convolution data to process 0
+    if (rank == 0) {
+        float* output_data = malloc(IMG_WIDTH * IMG_HEIGHT * sizeof(float));
+        for (int i = 0; i < size; i++) {
+            int start_col = i * (IMG_WIDTH / size);
+            int end_col = (i + 1) * (IMG_WIDTH / size);
+            MPI_Status status;
+            MPI_Recv(&output_data[start_col * IMG_HEIGHT], (end_col - start_col) * IMG_HEIGHT,
+                     MPI_FLOAT, i, 0, MPI_COMM_WORLD, &status);
+        }
+        // Save output data to file or display it
+        free(output_data);
+    } else {
+        MPI_Send(conv_data, (end_col - start_col) * IMG_HEIGHT, MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
+    }
+
+    free(conv_data);
+    if (rank == 0) {
+        free(img_data);
+    }
+    MPI_Finalize();
+    return 0;
+}

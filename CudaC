@@ -1,0 +1,78 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <cuda_runtime.h>
+
+__global__ void gaussian_blur(int *image, int *output, int width, int height, int kernel_size)
+{
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x >= width || y >= height)
+        return;
+
+    int k = kernel_size / 2;
+    int sum = 0;
+
+    for (int i = -k; i <= k; i++)
+    {
+        for (int j = -k; j <= k; j++)
+        {
+            int pixel_x = x + j;
+            int pixel_y = y + i;
+
+            if (pixel_x < 0 || pixel_x >= width || pixel_y < 0 || pixel_y >= height)
+                continue;
+
+            int pixel_value = image[pixel_y * width + pixel_x];
+            int kernel_value = exp(-(j * j + i * i) / (2 * k * k));
+            sum += pixel_value * kernel_value;
+        }
+    }
+
+    output[y * width + x] = sum;
+}
+
+int main()
+{
+    int width = 4000;
+    int height = 4000;
+    int kernel_size = 25;
+
+    // Allocate memory for image and output on host
+    int *image = (int *)malloc(width * height * sizeof(int));
+    int *output = (int *)malloc(width * height * sizeof(int));
+
+    // Initialize image with random values
+    for (int i = 0; i < width * height; i++)
+    {
+        image[i] = rand() % 256;
+    }
+
+    // Allocate memory for image and output on device
+    int *d_image, *d_output;
+    cudaMalloc(&d_image, width * height * sizeof(int));
+    cudaMalloc(&d_output, width * height * sizeof(int));
+
+    // Copy image from host to device
+    cudaMemcpy(d_image, image, width * height * sizeof(int), cudaMemcpyHostToDevice);
+
+    // Calculate grid and block sizes
+    dim3 block_size(16, 16);
+    dim3 grid_size((width + block_size.x - 1) / block_size.x, (height + block_size.y - 1) / block_size.y);
+
+    // Call the kernel function
+    gaussian_blur<<<grid_size, block_size>>>(d_image, d_output, width, height, kernel_size);
+
+    // Copy output from device to host
+    cudaMemcpy(output, d_output, width * height * sizeof(int), cudaMemcpyDeviceToHost);
+
+    // Free memory on device
+    cudaFree(d_image);
+    cudaFree(d_output);
+
+    // Free memory on host
+    free(image);
+    free(output);
+
+    return 0;
+}

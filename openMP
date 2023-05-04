@@ -1,0 +1,57 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include <omp.h>
+
+#define MAX_WIDTH 4000
+#define MAX_HEIGHT 4000
+#define KERNEL_SIZE 25
+
+float kernel[KERNEL_SIZE][KERNEL_SIZE] = { {0.023528, 0.033969, 0.038393, 0.033969, 0.023528},
+                                           {0.033969, 0.049045, 0.055432, 0.049045, 0.033969},
+                                           {0.038393, 0.055432, 0.062651, 0.055432, 0.038393},
+                                           {0.033969, 0.049045, 0.055432, 0.049045, 0.033969},
+                                           {0.023528, 0.033969, 0.038393, 0.033969, 0.023528} };
+
+float image[MAX_WIDTH][MAX_HEIGHT];
+float blurred_image[MAX_WIDTH][MAX_HEIGHT];
+
+int main(int argc, char *argv[])
+{
+    int i, j, k, l, num_threads;
+    double start_time, end_time, total_time;
+
+    // Initialize the image
+    for (i = 0; i < MAX_WIDTH; i++) {
+        for (j = 0; j < MAX_HEIGHT; j++) {
+            image[i][j] = rand() % 256;
+        }
+    }
+
+    // Apply the Gaussian blur filter
+    num_threads = omp_get_num_procs();
+    start_time = omp_get_wtime();
+    #pragma omp parallel for shared(image,blurred_image) private(i,j,k,l) num_threads(num_threads)
+    for (i = 0; i < MAX_WIDTH; i++) {
+        for (j = 0; j < MAX_HEIGHT; j++) {
+            float sum = 0.0;
+            for (k = -KERNEL_SIZE/2; k <= KERNEL_SIZE/2; k++) {
+                for (l = -KERNEL_SIZE/2; l <= KERNEL_SIZE/2; l++) {
+                    if (i+k >= 0 && i+k < MAX_WIDTH && j+l >= 0 && j+l < MAX_HEIGHT) {
+                        sum += kernel[k+KERNEL_SIZE/2][l+KERNEL_SIZE/2] * image[i+k][j+l];
+                    }
+                }
+            }
+            blurred_image[i][j] = sum;
+        }
+    }
+    end_time = omp_get_wtime();
+    total_time = end_time - start_time;
+
+    printf("Gaussian blur filter applied successfully using OpenMP!\n");
+    printf("Time taken: %lf seconds\n", total_time);
+
+    return 0;
+}
+
